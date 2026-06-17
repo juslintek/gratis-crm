@@ -35,6 +35,12 @@ add_action('admin_init', [\Gratis\CRM\Export::class, 'register']);
 add_action('user_register', [\Gratis\CRM\ContactSync::class, 'onUserRegister']);
 add_action('gratis_form_submitted', [\Gratis\CRM\ContactSync::class, 'onFormSubmit'], 10, 3);
 
+// Broadcast email: admin compose screen, batched wp-cron sender, unsubscribe handler.
+add_action('admin_menu', [\Gratis\CRM\Broadcast::class, 'menu']);
+add_action('gratis_crm_process_broadcasts', [\Gratis\CRM\Broadcast::class, 'process_queue']);
+add_action('init', [\Gratis\CRM\Unsubscribe::class, 'maybe_handle']);
+register_deactivation_hook(GRATIS_CRM_FILE, [\Gratis\CRM\Broadcast::class, 'deactivate']);
+
 // WP-CLI.
 add_action('plugins_loaded', function () {
     if (defined('WP_CLI') && WP_CLI) {

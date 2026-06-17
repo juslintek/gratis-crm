@@ -26,6 +26,8 @@ final class ContactPostType {
         '_notes'   => 'string',
         '_source'  => 'string',
         '_form_id' => 'integer',
+        '_unsubscribed'    => 'string',
+        '_unsubscribed_at' => 'string',
     ];
 
     /**

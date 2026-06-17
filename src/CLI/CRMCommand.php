@@ -3,6 +3,7 @@
 namespace Gratis\CRM\CLI;
 
 use Gratis\CRM\ContactPostType;
+use Gratis\CRM\Broadcast;
 
 defined('ABSPATH') || exit;
 
@@ -179,7 +180,11 @@ final class CRMCommand {
     }
 
     /**
-     * Send an email campaign to tagged contacts.
+     * Send an email broadcast to contacts with a tag (synchronously).
+     *
+     * Routed through the broadcast queue, so unsubscribed contacts are skipped
+     * and each message includes a per-contact unsubscribe link. The body may
+     * contain basic HTML.
      *
      * <tag>
      * : Tag slug to send to.
@@ -188,7 +193,7 @@ final class CRMCommand {
      * : Email subject.
      *
      * <body>
-     * : Email body.
+     * : Email body (basic HTML allowed).
      *
      * @param array<int,string>    $args       Positional args.
      * @param array<string,string> $assoc_args Associative args (unused).
@@ -198,31 +203,100 @@ final class CRMCommand {
     public function send_campaign($args, $assoc_args): void {
         unset($assoc_args);
 
-        $contacts = get_posts(
-            [
-                'post_type'      => ContactPostType::POST_TYPE,
-                'post_status'    => 'publish',
-                'posts_per_page' => -1, // phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page
-                'tax_query'      => [ // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
-                    [
-                        'taxonomy' => ContactPostType::TAXONOMY,
-                        'field'    => 'slug',
-                        'terms'    => sanitize_key($args[0]),
-                    ],
-                ],
-            ]
-        );
-        if (empty($contacts)) {
-            \WP_CLI::error("No contacts with tag: {$args[0]}");
+        $tag     = sanitize_key($args[0] ?? '');
+        $subject = sanitize_text_field($args[1] ?? '');
+        $body    = wp_kses_post($args[2] ?? '');
+
+        if ('' === $tag || '' === $subject || '' === $body) {
+            \WP_CLI::error('Usage: wp gratis-crm send-campaign <tag> <subject> <body>');
         }
 
-        $sent = 0;
-        foreach ($contacts as $c) {
-            $email = get_post_meta($c->ID, '_email', true);
-            if ($email && wp_mail($email, $args[1], $args[2])) {
-                ++$sent;
-            }
+        $result = Broadcast::enqueue($subject, $body, $tag);
+        if (0 === $result['total']) {
+            \WP_CLI::error("No eligible contacts with tag: {$tag}");
         }
-        \WP_CLI::success("Sent to {$sent}/" . count($contacts) . ' contacts.');
+
+        $stats = Broadcast::drain();
+        \WP_CLI::success(
+            "Sent to {$stats['sent']}/{$result['total']} contacts "
+            . "({$stats['failed']} failed, {$stats['skipped']} skipped)."
+        );
+    }
+
+    /**
+     * Queue a broadcast email to contacts.
+     *
+     * [--subject=<subject>]
+     * : Email subject.
+     *
+     * [--body=<body>]
+     * : Email body (basic HTML allowed).
+     *
+     * [--tag=<tag>]
+     * : Only send to contacts with this tag slug. Omit to send to all contacts.
+     *
+     * [--now]
+     * : Process the broadcast immediately instead of leaving it for wp-cron.
+     *
+     * @param array<int,string>    $args       Positional args (unused).
+     * @param array<string,string> $assoc_args Associative args.
+     * @when after_wp_load
+     */
+    public function broadcast($args, $assoc_args): void {
+        unset($args);
+
+        $subject = sanitize_text_field($assoc_args['subject'] ?? '');
+        $body    = isset($assoc_args['body']) ? wp_kses_post($assoc_args['body']) : '';
+        $tag     = isset($assoc_args['tag']) ? sanitize_key($assoc_args['tag']) : '';
+
+        if ('' === $subject || '' === $body) {
+            \WP_CLI::error('Both --subject and --body are required.');
+        }
+
+        $result = Broadcast::enqueue($subject, $body, $tag);
+        if (0 === $result['total']) {
+            \WP_CLI::error('No eligible recipients match the filter.');
+        }
+
+        \WP_CLI::success("Queued broadcast {$result['id']} for {$result['total']} recipient(s).");
+
+        if (isset($assoc_args['now'])) {
+            $stats = Broadcast::drain();
+            \WP_CLI::success(
+                "Processed: {$stats['sent']} sent, {$stats['failed']} failed, {$stats['skipped']} skipped."
+            );
+        }
+    }
+
+    /**
+     * Process the pending broadcast queue now.
+     *
+     * Drains any queued broadcasts in capped batches without waiting for the
+     * wp-cron schedule. Useful when driven from a real system cron via WP-CLI.
+     *
+     * [--max=<batches>]
+     * : Maximum number of batches to run (default 1000).
+     *
+     * @param array<int,string>    $args       Positional args (unused).
+     * @param array<string,string> $assoc_args Associative args.
+     * @subcommand process-broadcast
+     * @when after_wp_load
+     */
+    public function process_broadcast($args, $assoc_args): void {
+        unset($args);
+
+        $max   = isset($assoc_args['max']) ? max(1, (int) $assoc_args['max']) : 1000;
+        $stats = Broadcast::drain($max);
+
+        $processed = $stats['sent'] + $stats['failed'] + $stats['skipped'];
+        if (0 === $processed) {
+            \WP_CLI::log('No pending broadcasts to process.');
+            return;
+        }
+
+        \WP_CLI::success(
+            "Processed: {$stats['sent']} sent, {$stats['failed']} failed, "
+            . "{$stats['skipped']} skipped. Remaining: {$stats['remaining']}."
+        );
     }
 }
