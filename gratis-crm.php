@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Gratis CRM
  * Plugin URI: https://github.com/juslintek/gratis-crm
- * Description: Lightweight contact management — store contacts (name, email, phone, company, notes), tag and search them, auto-capture leads from gratis-forms, and export to CSV. Replaces FluentCRM ($103/yr) + Mailchimp ($13/mo).
+ * Description: Lightweight contact management — store contacts (name, email, phone, company, notes), tag and search them, auto-capture leads from gratis-forms, and export to CSV.
  * Version: 1.0.0
  * Requires at least: 6.4
  * Requires PHP: 8.1
