@@ -11,7 +11,7 @@ defined('ABSPATH') || exit;
 final class ContactPostType {
 
     public const POST_TYPE = 'gratis_contact';
-    public const TAXONOMY  = 'contact_tag';
+    public const TAXONOMY  = 'gratis_contact_tag';
 
     /**
      * Contact detail meta keys and their scalar type for register_post_meta.
@@ -54,7 +54,7 @@ final class ContactPostType {
                 'public'       => false,
                 'show_ui'      => true,
                 'show_in_menu' => true,
-                'show_in_rest' => true,
+                'show_in_rest' => false,
                 'menu_icon'    => 'dashicons-groups',
                 'menu_position' => 26,
                 'supports'     => ['title'],
@@ -75,7 +75,7 @@ final class ContactPostType {
                 'public'       => false,
                 'show_ui'      => true,
                 'show_admin_column' => true,
-                'show_in_rest' => true,
+                'show_in_rest' => false,
             ]
         );
 
@@ -83,7 +83,7 @@ final class ContactPostType {
     }
 
     /**
-     * Register typed, REST-exposed contact meta with sanitisation + auth.
+     * Register typed contact meta with sanitisation + auth.
      */
     private static function register_meta(): void {
         foreach (self::META as $key => $type) {
@@ -97,7 +97,7 @@ final class ContactPostType {
                 [
                     'type'              => $type,
                     'single'            => true,
-                    'show_in_rest'      => true,
+                    'show_in_rest'      => false,
                     'sanitize_callback' => $sanitize,
                     'auth_callback'     => static function (): bool {
                         return current_user_can('edit_posts');

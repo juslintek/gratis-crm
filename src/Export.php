@@ -44,7 +44,7 @@ final class Export {
 
         $url = wp_nonce_url(
             add_query_arg(
-                array_filter(['action' => self::ACTION, 'contact_tag' => $tag]),
+                array_filter(['action' => self::ACTION, ContactPostType::TAXONOMY => $tag]),
                 admin_url('admin-post.php')
             ),
             self::ACTION
@@ -73,6 +73,16 @@ final class Export {
             : '';
 
         self::stream($tag);
+    }
+
+    /**
+     * Neutralize leading spreadsheet formula triggers in exported CSV cells.
+     */
+    private static function csvCell(string $value): string {
+        if ('' !== $value && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $value;
+        }
+        return $value;
     }
 
     /**
@@ -108,7 +118,7 @@ final class Export {
         // WP_Filesystem cannot write to the output buffer.
         $out = fopen('php://output', 'w'); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
 
-        fputcsv($out, ['ID', 'Name', 'Email', 'Phone', 'Company', 'Tags', 'Source', 'Notes', 'Created']); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fputcsv
+        fputcsv($out, ['ID', 'Name', 'Email', 'Phone', 'Company', 'Tags', 'Source', 'Notes', 'Created'], ',', '"', ''); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fputcsv
 
         foreach ($contacts as $contact) {
             $tags = wp_get_object_terms($contact->ID, ContactPostType::TAXONOMY, ['fields' => 'names']);
@@ -118,15 +128,18 @@ final class Export {
                 $out,
                 [
                     (int) $contact->ID,
-                    (string) get_post_meta($contact->ID, '_name', true) ?: $contact->post_title,
-                    (string) get_post_meta($contact->ID, '_email', true),
-                    (string) get_post_meta($contact->ID, '_phone', true),
-                    (string) get_post_meta($contact->ID, '_company', true),
-                    implode(', ', $tags),
-                    (string) get_post_meta($contact->ID, '_source', true),
-                    (string) get_post_meta($contact->ID, '_notes', true),
+                    self::csvCell((string) get_post_meta($contact->ID, '_name', true) ?: $contact->post_title),
+                    self::csvCell((string) get_post_meta($contact->ID, '_email', true)),
+                    self::csvCell((string) get_post_meta($contact->ID, '_phone', true)),
+                    self::csvCell((string) get_post_meta($contact->ID, '_company', true)),
+                    self::csvCell(implode(', ', $tags)),
+                    self::csvCell((string) get_post_meta($contact->ID, '_source', true)),
+                    self::csvCell((string) get_post_meta($contact->ID, '_notes', true)),
                     (string) $contact->post_date,
-                ]
+                ],
+                ',',
+                '"',
+                ''
             );
         }
 
